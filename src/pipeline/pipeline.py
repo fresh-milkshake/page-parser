@@ -81,7 +81,7 @@ def pipeline(
         # Process each page
         results: List[Dict[str, Any]] = []
         for idx, img_path in enumerate(image_paths):
-            if page_limit is not None and idx + 1 >= page_limit:
+            if page_limit is not None and idx >= page_limit:
                 logger.info(f"Page limit of {page_limit} reached, stopping processing.")
                 break
 

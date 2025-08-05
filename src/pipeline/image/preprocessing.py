@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from PIL import Image, ImageDraw
+import numpy as np
 
 from src.common.aliases import Color, Rectangle
 from src.common.logging import get_logger
@@ -32,6 +33,33 @@ def fill_regions_with_color(
         logger.info(
             f"Filled {len(regions)} regions in '{image_path.stem}' and saved to '{output_path.stem}'."
         )
+    except Exception as exc:
+        logger.error(f"Failed to fill regions in image '{image_path}': {exc}")
+        raise
+
+
+# THIS FUNCTION IS FOR USAGE IN SHOWCASE
+def fill_regions_with_color_to_numpy(
+    image_path: Path,
+    regions: list[Rectangle],
+    color: Color = (255, 255, 255),
+) -> np.ndarray:
+    """
+    Fill specified rectangular regions in an image with a solid color.
+
+    Args:
+        image_path: Path to the input image.
+        regions: List of rectangles (x1, y1, x2, y2) to fill.
+        output_path: Path to save the modified image.
+        color: RGB color tuple to fill the regions with.
+    """
+    try:
+        with Image.open(image_path) as img:
+            for rect in regions:
+                draw = ImageDraw.Draw(img)
+                draw.rectangle(rect, fill=color)  # type: ignore
+        logger.info(f"Filled {len(regions)} regions in '{image_path.stem}'.")
+        return np.array(img)
     except Exception as exc:
         logger.error(f"Failed to fill regions in image '{image_path}': {exc}")
         raise
@@ -70,3 +98,15 @@ def extract_regions(
     except Exception as exc:
         logger.error(f"Failed to extract regions from image '{image_path}': {exc}")
         return None
+
+
+# THIS FUNCTION IS FOR USAGE IN SHOWCASE
+def extract_regions_to_numpy(
+    image_path: Path,
+    regions: list[Rectangle],
+) -> list[np.ndarray]:
+    """
+    Extract specified rectangular regions from an image and return them as numpy arrays.
+    """
+    with Image.open(image_path) as img:
+        return [np.array(img.crop(rect)) for rect in regions]
