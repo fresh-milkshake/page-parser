@@ -349,7 +349,9 @@ class Settings:
         )
 
         zoom_factor: int = int(
-            self._get_env_override("processing_zoom_factor", processing_section.get("zoom_factor", 2))
+            self._get_env_override(
+                "processing_zoom_factor", processing_section.get("zoom_factor", 2)
+            )
         )
 
         return ProcessingSettings(ocr_lang=ocr_lang, zoom_factor=zoom_factor)

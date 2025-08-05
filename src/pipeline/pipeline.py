@@ -25,6 +25,7 @@ def pipeline(
     model_path: str,
     output_dir: str,
     settings_file: Path,
+    page_limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
     Full pipeline: convert PDF to PNG, detect charts, extract text, and summarize.
@@ -80,6 +81,10 @@ def pipeline(
         # Process each page
         results: List[Dict[str, Any]] = []
         for idx, img_path in enumerate(image_paths):
+            if page_limit is not None and idx + 1 >= page_limit:
+                logger.info(f"Page limit of {page_limit} reached, stopping processing.")
+                break
+
             logger.info(f"Processing page {idx + 1}/{len(image_paths)}")
             page_result = process_single_page(
                 img_path=img_path,
