@@ -39,14 +39,18 @@
 
 You can see how it works step-by-step in [showcase.ipynb](showcase.ipynb).
 
-<div align="center" style="display: flex; justify-content: center; gap: 2%;">
-  <div style="display: inline-block; width: 45%; vertical-align: top;">
+<div align="center">
+  <div style="display: inline-block; width: 60%; margin-bottom: 1.5em;">
     <img src="assets/chart.png" alt="Original Chart" width="100%">
     <div><em>Original page with chart</em></div>
   </div>
-  <div style="display: inline-block; width: 45%; vertical-align: top;">
+  <div style="display: inline-block; width: 60%;">
     <img src="assets/chart_extracted.png" alt="Extracted Chart" width="100%">
     <div><em>Chart region extracted by Page Parser</em></div>
+  </div>
+  <div style="display: inline-block; width: 60%;">
+    <img src="assets/image.png" alt="Extracted Chart" width="100%">
+    <div><em>Gemma3 output</em></div>
   </div>
 </div>
 
