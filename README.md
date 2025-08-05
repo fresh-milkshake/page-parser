@@ -234,5 +234,7 @@ When using or redistributing this software, you must:
 **Built by [fresh-milkshake](https://github.com/fresh-milkshake)**
 <br>
 Give this project a ⭐ if you found it useful!
+  <br>
+  <br>
+  <a href="#-page-parser" style="font-size: 1.2em; color: white;">⬆️ Back to top</a>
 </div>
-
