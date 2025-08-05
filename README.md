@@ -240,6 +240,15 @@ When using or redistributing this software, you must:
 - **Retain attribution notices** in derivative works
 - **Link to original repository** where possible
 
+## Further plans
+
+- [ ] Find more efficient OCR model
+  - [ ] Try to use [EasyOCR](https://github.com/JaidedAI/EasyOCR)
+  - [ ] Try to use [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [ ] Enhance preprocessing before OCR
+  - [ ] Remove noise from images (page numbers, titles, etc.)
+  - [ ] Add slight quality degradation for better speed
+
 ---
 
 <div align="center">
