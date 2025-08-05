@@ -46,8 +46,8 @@ def _render_page_to_png(
 def pdf_to_png(
     pdf_path: str,
     output_dir: str,
-    zoom_x: float = 1,
-    zoom_y: float = 1,
+    zoom_x: float = 5,
+    zoom_y: float = 5,
     colorspace: str = "rgb",
 ) -> List[Path]:
     """

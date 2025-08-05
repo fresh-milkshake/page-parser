@@ -1,7 +1,7 @@
 """
 Logging configuration using loguru.
 
-This module provides a centralized logging setup for the page-parser project.
+This module provides a centralized logging setup.
 """
 
 import sys
@@ -28,7 +28,6 @@ def setup_logging(
         retention: Log retention period (e.g., "7 days", "1 month")
         format_string: Custom format string for log messages
     """
-    # Remove default handler
     logger.remove()
 
     # Default format if not provided

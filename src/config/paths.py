@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 
@@ -11,4 +12,6 @@ if not LOGS_FOLDER.exists():
 if not MODEL_FILES_FOLDER.exists():
     MODEL_FILES_FOLDER.mkdir(parents=True, exist_ok=True)
 
-DEFAULT_LOG_FILE = LOGS_FOLDER / "page-parser.log"
+current_datetime = datetime.now().strftime(r"%Y-%m-%d")
+DEFAULT_LOG_FILE = LOGS_FOLDER / f"{current_datetime}.log"
+DEFAULT_SETTINGS_FILE = PROJECT_ROOT / "settings.toml"

@@ -87,8 +87,8 @@ class Detector:
 
         detections: List[DetectionResult] = []
         for label, box, conf in zip(
-            result.boxes.cls.tolist(), # type: ignore
-            result.boxes.xyxyn.tolist(), # type: ignore
+            result.boxes.cls.tolist(),  # type: ignore
+            result.boxes.xyxyn.tolist(),  # type: ignore
             result.boxes.conf.tolist(),  # type: ignore
         ):  # type: ignore[attr-defined]
             label_idx = int(label)

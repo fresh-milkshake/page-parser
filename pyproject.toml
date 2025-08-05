@@ -1,25 +1,23 @@
 [project]
 name = "page-parser"
-version = "0.1.0"
-description = "Add your description here"
+version = "1.0.0"
+description = "Pipeling for parsing pages of documents and extracting text from it, including charts and tables."
 readme = "README.md"
 requires-python = ">=3.13"
+license = { file = "LICENSE" }
+authors = [{ name = "fresh-milkshake" }]
 dependencies = [
     "click>=8.2.1",
     "loguru>=0.7.3",
-    "ollama>=0.5.1",
+    "openai>=1.98.0",
     "opencv-python>=4.12.0.88",
-    "pdf2image>=1.17.0",
     "pymupdf>=1.26.3",
     "pytesseract>=0.3.13",
-    "ultralytics>=8.3.174",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "pyright>=1.1.403",
     "ruff>=0.12.7",
 ]
-showcase = [
-    "ipykernel>=6.30.1",
-    "seaborn>=0.13.2",
-]
+showcase = ["ipykernel>=6.30.1", "seaborn>=0.13.2", "ultralytics>=8.3.174"]
