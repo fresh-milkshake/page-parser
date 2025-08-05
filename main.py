@@ -46,15 +46,6 @@ def main(
 ) -> None:
     """
     CLI for running the document analysis pipeline and saving results to a JSON file.
-
-    Args:
-        document_path (str): Path to the input PDF document.
-        model_path (str): Path to the YOLO model file.
-        output_dir (str): Directory to save outputs.
-        output_json (str): Path to the output JSON file.
-        log_level (str): Logging level.
-        log_file (Optional[str]): Path to log file.
-        settings_file (Optional[str]): Path to settings file.
     """
 
     log_file_path = Path(log_file) if log_file else None

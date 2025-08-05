@@ -74,7 +74,11 @@ def pipeline(
         logger.info("Initializing detection and summarization models")
         detector = Detector(model_path=model_path)
         summarizer = ChartSummarizer(
-            model_name=model_name, base_url=base_url, api_key=api_key
+            model_name=model_name,
+            base_url=base_url,
+            api_key=api_key or "",
+            retries=settings.vision.retries,
+            timeout=settings.vision.timeout,
         )
         logger.info("Models initialized successfully")
 

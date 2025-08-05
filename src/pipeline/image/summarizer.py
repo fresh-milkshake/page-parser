@@ -1,4 +1,5 @@
 import base64
+import time
 from typing import Optional
 
 from openai import OpenAI
@@ -17,24 +18,32 @@ class ChartSummarizer:
         model_name (str): The name of the OpenAI model to use.
         openai_api_key (str): The API key for OpenAI.
         openai_base_url (str): The base URL for the OpenAI API.
+        retries (int): Number of times to retry the request on failure.
+        timeout (int): Timeout for each request in seconds.
     """
 
     def __init__(
         self,
-        model_name: str = "gpt-4o-mini",
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
+        model_name: str,
+        api_key: str,
+        base_url: str,
+        retries: int,
+        timeout: int,
     ) -> None:
         """
         Initialize the ChartSummarizer.
 
         Args:
             model_name (str): The OpenAI model to use for vision tasks.
-            openai_api_key (Optional[str]): The OpenAI API key. If None, uses environment variable.
-            openai_base_url (Optional[str]): The base URL for the OpenAI API. If None, uses default.
+            api_key (str): The OpenAI API key.
+            base_url (str): The base URL for the OpenAI API.
+            retries (int): Number of times to retry the request on failure.
+            timeout (int): Timeout for each request in seconds.
         """
         logger.info(f"Initializing ChartSummarizer with model: {model_name}")
         self.model_name = model_name
+        self.retries = retries
+        self.timeout = timeout
         config = {}
         if api_key:
             config["api_key"] = api_key
@@ -75,39 +84,48 @@ class ChartSummarizer:
             prompt = f"{prompt}\n\n{extra_context}"
             logger.debug("Added extra context to prompt")
 
+        logger.debug("Loading image file")
         try:
-            logger.debug("Loading image file")
             with open(image_path, "rb") as image_file:
                 image_bytes = image_file.read()
-            image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-            logger.debug(f"Sending request to OpenAI model: {self.model_name}")
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{image_b64}"
-                                },
-                            },
-                        ],
-                    }
-                ],
-            )
-            result = response.choices[0].message.content if response.choices else ""
-            logger.debug("Successfully received response from OpenAI")
-            return result.strip() if result else ""
         except Exception as exc:
-            logger.error(f"Failed to summarize charts: {exc}")
-            raise RuntimeError(f"Failed to summarize charts: {exc}") from exc
+            logger.error(f"Failed to read image file: {exc}")
+            raise RuntimeError(f"Failed to read image file: {exc}") from exc
 
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-if __name__ == "__main__":
-    summarizer = ChartSummarizer()
-    summary = summarizer.summarize_charts_from_page("data/image.png")
-    print(summary)
+        last_exception: Optional[Exception] = None
+        for attempt in range(1, self.retries + 1):
+            try:
+                logger.debug(
+                    f"Sending request to model: {self.model_name} (attempt {attempt}/{self.retries})"
+                )
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{image_b64}"
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                )
+                result = response.choices[0].message.content if response.choices else ""
+                logger.debug("Successfully received response from OpenAI")
+                return result.strip() if result else ""
+            except Exception as exc:
+                logger.warning(
+                    f"Attempt {attempt} failed to summarize charts: {exc}"
+                )
+                last_exception = exc
+                if attempt < self.retries:
+                    time.sleep(self.timeout)
+        logger.error(f"Failed to summarize charts after {self.retries} attempts: {last_exception}")
+        raise RuntimeError(f"Failed to summarize charts: {last_exception}") from last_exception

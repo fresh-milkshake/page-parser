@@ -35,26 +35,35 @@
 - **Multi-Provider** - Flexible AI backend integration
 - **Structured Output** - Rich JSON export with bounding boxes and metadata
 
----
+## Showcase
+
+You can see how it works step-by-step in [showcase.ipynb](showcase.ipynb).
+
+<div align="center" style="display: flex; justify-content: center; gap: 2%;">
+  <div style="display: inline-block; width: 45%; vertical-align: top;">
+    <img src="assets/chart.png" alt="Original Chart" width="100%">
+    <div><em>Original page with chart</em></div>
+  </div>
+  <div style="display: inline-block; width: 45%; vertical-align: top;">
+    <img src="assets/chart_extracted.png" alt="Extracted Chart" width="100%">
+    <div><em>Chart region extracted by Page Parser</em></div>
+  </div>
+</div>
 
 ## Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/fresh-milkshake/page-parser/
 cd page-parser
-
-# Install with uv
 uv sync
-
-# Install development dependencies (optional)
-uv sync --dev
-
-# Install dependencies for showcase (optional)
-uv sync --showcase
-
-# Run the project
 uv run main.py
+```
+
+Optionally, you can install development or showcase dependencies:
+
+```bash
+uv sync --dev
+uv sync --showcase # for showcase.ipynb
 ```
 
 ### Prerequisites
@@ -63,32 +72,37 @@ uv run main.py
 - **Tesseract OCR** (for text extraction)
 - **YOLO model** (download from project releases)
 
----
-
 ## Quick Start
 
 ### Basic Usage
 
 ```bash
-python main.py document.pdf models/yolov12l-doclaynet.pt ./output results.json
+python main.py <pdf_path> <model_path> <output_dir> <output_json>
 ```
 
 ### Command Line Options
 
 ```bash
-python main.py --help
+$ python main.py --help
+
+Usage: main.py [OPTIONS] DOCUMENT_PATH MODEL_PATH OUTPUT_DIR OUTPUT_JSON
+
+  CLI for running the document analysis pipeline and saving results to a JSON
+  file.
+
+Options:
+  --log-level [DEBUG|INFO|WARNING|ERROR]
+                                  Logging level.  [default: INFO]
+  --log-file FILE                 Path to log file (optional).
+  --settings-file FILE            Path to settings file.
+  --help                          Show this message and exit.
 ```
 
-| Parameter         | Description          | Required |
-| ----------------- | -------------------- | -------- |
-| `document_path`   | Input PDF file path  | ✅        |
-| `model_path`      | YOLO model file      | ✅        |
-| `output_dir`      | Output directory     | ✅        |
-| `output_json`     | Results JSON file    | ✅        |
-| `--log-level`     | Logging verbosity    | ❌        |
-| `--settings-file` | Custom settings path | ❌        |
+Example:
 
----
+```bash
+uv run python main.py data/2507.21509v1.pdf models/yolov12l-doclaynet.pt output output.json
+```
 
 ## Configuration
 
@@ -96,9 +110,9 @@ Create or modify `settings.toml` to customize behavior:
 
 ```toml
 [vision]
-provider = "openai"       # Options: openai, ollama, openrouter
-retries = 3
-timeout = 10
+provider = "openai"       # Options are every provider from vision.providers
+retries = 3               # How many times to retry if failed
+timeout = 10              # Timeout for requests
 
 [vision.providers.openai]
 model = "gpt-4o"
@@ -112,40 +126,45 @@ api_key = { type = "inline", key = "dummy-key" }
 
 [processing]
 ocr_lang = "eng"           # Tesseract language
-zoom_factor = 2            # PDF scaling factor
+zoom_factor = 2            # PDF scaling factor (more is more detailed, but slower)
 
 [filtration]
 chart_labels = ["picture", "figure", "chart", "diagram"]
 ```
 
-### Environment Variables
+You can freely modify the settings to your needs. Main things to know is only that api_key have 3 types:
 
-```bash
-export OPENAI_API_KEY="your-api-key"
-export OPENROUTER_API_KEY="your-openrouter-key"
+- `inline` - inline key, example: 
+  ```toml
+  api_key = { type = "inline", key = "dummy-key" }
+  ```
+- `env` - environment variable, example: 
+  ```toml
+  api_key = { type = "env", name = "OPENAI_API_KEY" }
+  ```
+- `file` - file path, example: 
+  
+  ```toml
+  api_key = { type = "file", path = "path/to/key.txt" }
+  ```
+
+## Project Structure
+
 ```
-
----
-
-## Architecture
-
+src/
+├── pipeline/
+│   ├── document/                 # PDF processing & layout detection
+│   │   ├── convert.py            # PDF to image conversion
+│   │   ├── detector.py           # YOLO-based element detection
+│   │   └── text_extraction.py    # OCR processing
+│   ├── image/                    # Visual processing & AI analysis
+│   │   ├── preprocessing.py      # Image preparation
+│   │   ├── summarizer.py         # AI-powered chart analysis
+│   │   └── annotate.py           # Visualization utilities
+│   └── pipeline.py               # Main orchestration
+├── config/                       # Configuration management
+└── common/                       # Shared utilities & logging
 ```
-📁 src/
-├── 🔄 pipeline/
-│   ├── 📑 document/         # PDF processing & layout detection
-│   │   ├── convert.py       # PDF to image conversion
-│   │   ├── detector.py      # YOLO-based element detection
-│   │   └── text_extraction.py # OCR processing
-│   ├── 🖼️ image/            # Visual processing & AI analysis
-│   │   ├── preprocessing.py # Image preparation
-│   │   ├── summarizer.py    # AI-powered chart analysis
-│   │   └── annotate.py      # Visualization utilities
-│   └── pipeline.py          # Main orchestration
-├── ⚙️ config/               # Configuration management
-└── 🔧 common/               # Shared utilities & logging
-```
-
----
 
 ## Output Format
 
@@ -179,27 +198,21 @@ Each processed page generates structured JSON:
 - **`summary`**: AI-generated content description (for visual elements)
 - **`text`**: Extracted textual content (for text elements)
 
----
-
 ## Dependencies
 
 ### Core Technologies
 
-| Category              | Libraries                   |
-| --------------------- | --------------------------- |
-| 🔮 **Computer Vision** | OpenCV, Ultralytics YOLO    |
-| 📖 **OCR Engine**      | Tesseract (via pytesseract) |
-| 📄 **PDF Processing**  | PyMuPDF                     |
-| 🤖 **AI Integration**  | OpenAI API                  |
-| 🖥️ **CLI Framework**   | Click                       |
-| 📝 **Logging**         | Loguru                      |
+- **Computer Vision**: OpenCV, Ultralytics YOLO
+- **OCR Engine**: Tesseract (via pytesseract)
+- **PDF Processing**: PyMuPDF
+- **AI Integration**: OpenAI API
+- **CLI Framework**: Click
+- **Logging**: Loguru
 
 ### Model Requirements
 
 - **YOLO v12** (Large/Medium) trained on DocLayNet dataset
 - Download pre-trained models from project releases
-
----
 
 ## Example Results
 
