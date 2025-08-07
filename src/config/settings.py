@@ -111,6 +111,7 @@ class ProcessingSettings:
 
     ocr_lang: str = "eng"
     zoom_factor: int = 2
+    labels_to_exclude: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -127,6 +128,39 @@ class AppSettings:
     vision: VisionSettings
     filtration: FiltrationSettings
     processing: ProcessingSettings
+
+
+@dataclass
+class DoclayoutYoloSettings:
+    """
+    Dataclass for Doclayout YOLO settings.
+    """
+
+    imgsz: int
+    conf: float
+    device: str
+
+
+@dataclass
+class YoloDoclaynetSettings:
+    """
+    Dataclass for YOLO Doclaynet settings.
+    """
+
+    pass
+
+
+@dataclass
+class DetectionSettings:
+    """
+    Dataclass for detection settings.
+
+    Attributes:
+        doclayout_yolo: DoclayoutYoloSettings for document layout detection.
+    """
+
+    doclayout_yolo: DoclayoutYoloSettings
+    yolo_doclaynet: YoloDoclaynetSettings
 
 
 class Settings:
@@ -354,7 +388,61 @@ class Settings:
             )
         )
 
-        return ProcessingSettings(ocr_lang=ocr_lang, zoom_factor=zoom_factor)
+        labels_to_exclude: List[str] = processing_section.get("labels_to_exclude", [])
+
+        return ProcessingSettings(
+            ocr_lang=ocr_lang,
+            zoom_factor=zoom_factor,
+            labels_to_exclude=labels_to_exclude,
+        )
+
+    @property
+    def layout_detection(self) -> DetectionSettings:
+        """
+        Access detection settings, with support for environment variable overrides.
+
+        Returns:
+            DetectionSettings containing doclayout_yolo and yolo_doclaynet settings.
+
+        Raises:
+            RuntimeError: If configuration is not loaded.
+        """
+        if not self._config:
+            raise RuntimeError("Configuration not loaded")
+
+        detection_section: Dict[str, Any] = self._config.get("layout_detection", {})
+
+        doclayout_yolo_section: Dict[str, Any] = detection_section.get(
+            "doclayout_yolo", {}
+        )
+        doclayout_yolo: DoclayoutYoloSettings = DoclayoutYoloSettings(
+            imgsz=doclayout_yolo_section.get("imgsz", 1024),
+            conf=doclayout_yolo_section.get("conf", 0.7),
+            device=doclayout_yolo_section.get("device", "cuda:0"),
+        )
+
+        yolo_doclaynet_section: Dict[str, Any] = detection_section.get(
+            "yolo_doclaynet", {}
+        )
+        yolo_doclaynet: YoloDoclaynetSettings = YoloDoclaynetSettings()
+        yolo_doclaynet_section  # type: ignore
+
+        return DetectionSettings(
+            doclayout_yolo=doclayout_yolo, yolo_doclaynet=yolo_doclaynet
+        )
+
+    @property
+    def layout_detection_backend(self) -> str:
+        """
+        Access layout detection backend settings, with support for environment variable overrides.
+        """
+        if not self._config:
+            raise RuntimeError("Configuration not loaded")
+
+        backend = self._config.get("layout_detection", {}).get(
+            "backend", "doclayout_yolo"
+        )
+        return backend
 
     def get_settings(self) -> AppSettings:
         """

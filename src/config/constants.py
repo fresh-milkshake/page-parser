@@ -1,0 +1,2 @@
+DEFAULT_MODEL_NAME = "yolov12l-doclaynet.pt"
+CONVERSION_MAX_WORKERS = 5

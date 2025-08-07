@@ -3,6 +3,7 @@ import tempfile
 from pathlib import Path
 import json
 import cv2
+import numpy as np
 
 from src.config.settings import get_settings
 from src.common.logging import get_logger
@@ -15,7 +16,7 @@ from src.pipeline.document import (
 from src.pipeline.image import ChartSummarizer
 from src.pipeline.image import extract_regions, fill_regions_with_color
 from src.pipeline.utils import filter_detections
-from src.common.aliases import Rectangle
+from src.common.aliases import RectangleTuple, RectangleUnion
 
 logger = get_logger(__name__)
 
@@ -72,7 +73,11 @@ def pipeline(
 
         # Initialize models
         logger.info("Initializing detection and summarization models")
-        detector = Detector(model_path=model_path)
+        detector = Detector(
+            backend=settings.layout_detection_backend,
+            model_path=model_path,
+            settings=settings,
+        )
         summarizer = ChartSummarizer(
             model_name=model_name,
             base_url=base_url,
@@ -85,18 +90,24 @@ def pipeline(
         # Process each page
         results: List[Dict[str, Any]] = []
         for idx, img_path in enumerate(image_paths):
+            img = cv2.imread(str(img_path), cv2.IMREAD_COLOR)
+            if img is None:
+                logger.error(f"Could not load image at {img_path}")
+                raise FileNotFoundError(f"Could not load image at {img_path}")
+
             if page_limit is not None and idx >= page_limit:
                 logger.info(f"Page limit of {page_limit} reached, stopping processing.")
                 break
 
             logger.info(f"Processing page {idx + 1}/{len(image_paths)}")
             page_result = process_single_page(
-                img_path=img_path,
+                image=img,
+                page_number=idx + 1,
                 detector=detector,
                 summarizer=summarizer,
-                temp_path=temp_path,
                 ocr_lang=settings.processing.ocr_lang,
                 charts_labels=settings.filtration.chart_labels,
+                labels_to_exclude_from_ocr=settings.processing.labels_to_exclude,
             )
             results.append(page_result)
 
@@ -111,44 +122,42 @@ def pipeline(
 
 
 def process_single_page(
-    img_path: Path,
+    image: np.ndarray,
+    page_number: int,
     detector: Detector,
     summarizer: ChartSummarizer,
-    temp_path: Path,
     charts_labels: List[str],
+    labels_to_exclude_from_ocr: List[str],
     ocr_lang: str,
 ) -> Dict[str, Any]:
     """
     Process a single page image: detect elements, extract chart and text data.
 
     Args:
-        img_path (Path): Path to the page image.
+        image (np.ndarray): Image to process.
         detector (Detector): Detector instance for layout detection.
         summarizer (ChartSummarizer): Summarizer for chart elements.
-        temp_path (Path): Temporary directory for intermediate files.
         ocr_lang (str): Language for OCR.
 
     Returns:
         Dict[str, Any]: Dictionary containing page number and extracted elements.
     """
 
-    page_number = int(img_path.stem.split("_")[1]) if "_" in img_path.stem else 1
-
-    detections = detector.parse_layout(img_path)
+    detections = detector.parse_layout(image)
     chart_detections = filter_detections(detections, charts_labels)
 
     chart_elements = process_chart_elements(
-        image_path=img_path,
+        image=image,
         chart_detections=chart_detections,
-        temp_path=temp_path,
         page_number=page_number,
         summarizer=summarizer,
     )
 
+    filtered_detections = filter_detections(detections, labels_to_exclude_from_ocr)
+    excluded_regions = [detection.bbox for detection in filtered_detections]
     text_elements = process_text_elements(
-        image_path=img_path,
-        chart_bboxes=chart_detections,
-        temp_path=temp_path,
+        image=image,
+        excluded_bboxes=excluded_regions,  # type: ignore
         ocr_lang=ocr_lang,
         page_number=page_number,
     )
@@ -162,9 +171,8 @@ def process_single_page(
 
 
 def process_chart_elements(
-    image_path: Path,
+    image: np.ndarray,
     chart_detections: List[DetectionResult],
-    temp_path: Path,
     page_number: int,
     summarizer: ChartSummarizer,
     prompt: Optional[str] = None,
@@ -174,9 +182,8 @@ def process_chart_elements(
     Process chart elements: crop, summarize, and return structured data.
 
     Args:
-        image_path (Path): Path to the input image.
+        image (np.ndarray): Image to process.
         chart_detections (List[DetectionResult]): Filtered chart detections.
-        temp_path (Path): Temporary directory path.
         page_number (int): Current page number.
         summarizer (ChartSummarizer): Chart summarizer instance.
         prompt (Optional[str]): Custom prompt for summarization.
@@ -191,29 +198,28 @@ def process_chart_elements(
         logger.info("No chart detections found, skipping chart processing")
         return []
 
-    cropped_dir = temp_path / f"cropped_{page_number}"
-    cropped_dir.mkdir(exist_ok=True)
-
-    # Extract regions and create the expected format
-    region_paths = extract_regions(
-        image_path=image_path,
+    extracted_regions = extract_regions(
+        image=image,
         regions=[
-            cast(Rectangle, tuple(detection.bbox)) for detection in chart_detections
+            cast(RectangleTuple, tuple(detection.bbox))
+            for detection in chart_detections
         ],
-        output_dir=cropped_dir,
     )
 
-    if region_paths is None:
+    if not extracted_regions:
         logger.warning("Failed to extract chart regions")
         return []
 
     chart_elements: List[Dict[str, Any]] = []
-    for idx, (detection, region_path) in enumerate(zip(chart_detections, region_paths)):
-        logger.debug(f"Summarizing chart {idx + 1}/{len(region_paths)}")
+    for idx, (detection, region) in enumerate(zip(chart_detections, extracted_regions)):
+        logger.debug(f"Summarizing chart {idx + 1}/{len(extracted_regions)}...")
         summary = summarizer.summarize_charts_from_page(
-            image_path=str(region_path),
+            image=region,
             prompt=prompt,
             extra_context=extra_context,
+        )
+        logger.info(
+            f"Successfully summarized chart {idx + 1}/{len(extracted_regions)} on page {page_number}"
         )
         chart_elements.append(
             {
@@ -229,9 +235,8 @@ def process_chart_elements(
 
 
 def process_text_elements(
-    image_path: Path,
-    chart_bboxes: List[DetectionResult],
-    temp_path: Path,
+    image: np.ndarray,
+    excluded_bboxes: List[RectangleUnion],
     page_number: int,
     ocr_lang: str,
 ) -> List[Dict[str, Any]]:
@@ -239,7 +244,7 @@ def process_text_elements(
     Process text elements: fill chart regions with white, then extract text from the entire image.
 
     Args:
-        image_path (Path): Path to the input image.
+        image (np.ndarray): Image to extract text from.
         chart_bboxes (List[DetectionResult]): Chart bounding boxes to fill with white.
         temp_path (Path): Temporary directory path.
         page_number (int): Current page number.
@@ -250,36 +255,22 @@ def process_text_elements(
     """
     logger.info(f"Processing text elements for page {page_number}")
 
-    # Save the processed image with chart regions filled
-    processed_image_path = temp_path / f"text_processed_{page_number}.png"
-
-    # Fill chart regions with white using the dedicated function
-    fill_regions_with_color(
-        image_path=image_path,
-        regions=[cast(Rectangle, tuple(detection.bbox)) for detection in chart_bboxes],
-        output_path=processed_image_path,
+    filled_image = fill_regions_with_color(
+        image=image,
+        regions=excluded_bboxes,
         color=(255, 255, 255),  # White color
     )
-
-    logger.debug(f"Saved processed image to {processed_image_path}")
 
     # Extract text from the entire processed image
     logger.debug("Extracting text from processed image")
     text = extract_text_from_image(
-        image_path=str(processed_image_path),
+        image=filled_image,
         lang=ocr_lang,
     )
 
-    # Get image dimensions for text bbox
-    img = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
-    if img is None:
-        logger.error(f"Could not load image at {image_path}")
-        raise FileNotFoundError(f"Could not load image at {image_path}")
-
     text_elements: List[Dict[str, Any]] = []
     if text.strip():
-        # Use entire image dimensions as bbox for text
-        height, width = img.shape[:2]
+        height, width = filled_image.shape[:2]
         text_elements.append(
             {
                 "type": "text",

@@ -1,7 +1,7 @@
 from .logging import get_logger
 from .aliases import (
     Color,
-    Rectangle,
+    RectangleTuple,
 )
 
-__all__ = ["get_logger", "Color", "Rectangle"]
+__all__ = ["get_logger", "Color", "RectangleTuple"]

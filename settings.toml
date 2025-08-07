@@ -19,8 +19,27 @@ base_url = "https://openrouter.ai/api/v1"
 api_key = { type = "env", name = "OPENROUTER_API_KEY" }
 
 [filtration]
-chart_labels = ["picture", "figure", "chart", "diagram"]
+chart_labels = ["picture", "figure", "chart", "diagram", "table"]
 
 [processing]
 ocr_lang = "eng"
 zoom_factor = 2
+labels_to_exclude = [
+    "page-footer",
+    "page-header",
+    "caption",
+    "picture",
+    "chart",
+    "table",
+    "footnote",
+]
+
+[layout_detection]
+backend = "yolo_doclaynet"
+
+[layout_detection.doclayout_yolo]
+imgsz = 1024
+conf = 0.7
+device = "cpu"
+
+[layout_detection.yolo_doclaynet]

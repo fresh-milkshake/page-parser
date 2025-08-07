@@ -1,7 +1,10 @@
 import base64
+import io
 import time
 from typing import Optional
 
+import numpy as np
+from PIL import Image
 from openai import OpenAI
 
 from src.common.logging import get_logger
@@ -52,9 +55,58 @@ class ChartSummarizer:
         self.client = OpenAI(**config)
         logger.info("ChartSummarizer initialized successfully")
 
+    def _numpy_to_base64(self, image: np.ndarray, format: str = "PNG") -> str:
+        """
+        Convert numpy array to base64 encoded image string.
+        
+        Args:
+            image (np.ndarray): Image as numpy array
+            format (str): Output image format (PNG, JPEG, etc.)
+            
+        Returns:
+            str: Base64 encoded image string
+        """
+        # Handle different numpy array formats
+        if image.dtype != np.uint8:
+            # Convert to uint8 if not already
+            if image.max() <= 1.0: # type: ignore
+                # Assume normalized float values [0,1]
+                image = (image * 255).astype(np.uint8)
+            else:
+                # Clip to valid range
+                image = np.clip(image, 0, 255).astype(np.uint8)
+        
+        # Handle grayscale vs color images
+        if len(image.shape) == 2:
+            # Grayscale image
+            pil_image = Image.fromarray(image, mode='L')
+        elif len(image.shape) == 3:
+            if image.shape[2] == 1:
+                # Single channel, squeeze and treat as grayscale
+                pil_image = Image.fromarray(image.squeeze(), mode='L')
+            elif image.shape[2] == 3:
+                # RGB image
+                pil_image = Image.fromarray(image, mode='RGB')
+            elif image.shape[2] == 4:
+                # RGBA image
+                pil_image = Image.fromarray(image, mode='RGBA')
+            else:
+                raise ValueError(f"Unsupported image shape: {image.shape}")
+        else:
+            raise ValueError(f"Unsupported image dimensions: {image.shape}")
+        
+        # Convert to base64
+        buffer = io.BytesIO()
+        pil_image.save(buffer, format=format)
+        buffer.seek(0)
+        image_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        logger.debug(f"Converted numpy array {image.shape} to base64 {format}")
+        return image_b64
+
     def summarize_charts_from_page(
         self,
-        image_path: str,
+        image: np.ndarray,
         prompt: Optional[str] = None,
         extra_context: Optional[str] = None,
     ) -> str:
@@ -62,7 +114,7 @@ class ChartSummarizer:
         Summarize charts found in the given image using the vision model.
 
         Args:
-            image_path (str): Path to the image file (e.g., a page with charts or diagrams).
+            image (np.ndarray): Image to summarize.
             prompt (Optional[str]): Custom prompt for the model.
             extra_context (Optional[str]): Additional context to provide to the model.
 
@@ -72,7 +124,7 @@ class ChartSummarizer:
         Raises:
             RuntimeError: If OpenAI API is not available or the request fails.
         """
-        logger.debug(f"Summarizing charts from image: {image_path}")
+        logger.debug(f"Summarizing charts from image shape: {image.shape}")
 
         if prompt is None:
             prompt = DEFAULT_VISION_PROMPT
@@ -84,15 +136,11 @@ class ChartSummarizer:
             prompt = f"{prompt}\n\n{extra_context}"
             logger.debug("Added extra context to prompt")
 
-        logger.debug("Loading image file")
         try:
-            with open(image_path, "rb") as image_file:
-                image_bytes = image_file.read()
-        except Exception as exc:
-            logger.error(f"Failed to read image file: {exc}")
-            raise RuntimeError(f"Failed to read image file: {exc}") from exc
-
-        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+            image_b64 = self._numpy_to_base64(image)
+        except Exception as e:
+            logger.error(f"Failed to convert numpy array to base64: {e}")
+            raise RuntimeError(f"Image conversion failed: {e}") from e
 
         last_exception: Optional[Exception] = None
         for attempt in range(1, self.retries + 1):
@@ -100,32 +148,38 @@ class ChartSummarizer:
                 logger.debug(
                     f"Sending request to model: {self.model_name} (attempt {attempt}/{self.retries})"
                 )
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{image_b64}"
+                                },
+                            },
+                        ],
+                    }
+                ]
+                
                 response = self.client.chat.completions.create(
                     model=self.model_name,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/png;base64,{image_b64}"
-                                    },
-                                },
-                            ],
-                        }
-                    ],
+                    messages=messages, # type: ignore
                 )
                 result = response.choices[0].message.content if response.choices else ""
                 logger.debug("Successfully received response from OpenAI")
                 return result.strip() if result else ""
             except Exception as exc:
-                logger.warning(
-                    f"Attempt {attempt} failed to summarize charts: {exc}"
-                )
+                logger.warning(f"Attempt {attempt} failed to summarize charts: {exc}")
                 last_exception = exc
                 if attempt < self.retries:
+                    logger.debug(f"Retrying in {self.timeout} seconds...")
                     time.sleep(self.timeout)
-        logger.error(f"Failed to summarize charts after {self.retries} attempts: {last_exception}")
-        raise RuntimeError(f"Failed to summarize charts: {last_exception}") from last_exception
+        
+        logger.error(
+            f"Failed to summarize charts after {self.retries} attempts: {last_exception}"
+        )
+        raise RuntimeError(
+            f"Failed to summarize charts: {last_exception}"
+        ) from last_exception
