@@ -1,6 +1,5 @@
 import sys
 import json
-from typing import Optional
 import click
 from pathlib import Path
 

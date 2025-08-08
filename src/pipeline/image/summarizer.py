@@ -58,49 +58,49 @@ class ChartSummarizer:
     def _numpy_to_base64(self, image: np.ndarray, format: str = "PNG") -> str:
         """
         Convert numpy array to base64 encoded image string.
-        
+
         Args:
             image (np.ndarray): Image as numpy array
             format (str): Output image format (PNG, JPEG, etc.)
-            
+
         Returns:
             str: Base64 encoded image string
         """
         # Handle different numpy array formats
         if image.dtype != np.uint8:
             # Convert to uint8 if not already
-            if image.max() <= 1.0: # type: ignore
+            if image.max() <= 1.0:  # type: ignore
                 # Assume normalized float values [0,1]
                 image = (image * 255).astype(np.uint8)
             else:
                 # Clip to valid range
                 image = np.clip(image, 0, 255).astype(np.uint8)
-        
+
         # Handle grayscale vs color images
         if len(image.shape) == 2:
             # Grayscale image
-            pil_image = Image.fromarray(image, mode='L')
+            pil_image = Image.fromarray(image, mode="L")
         elif len(image.shape) == 3:
             if image.shape[2] == 1:
                 # Single channel, squeeze and treat as grayscale
-                pil_image = Image.fromarray(image.squeeze(), mode='L')
+                pil_image = Image.fromarray(image.squeeze(), mode="L")
             elif image.shape[2] == 3:
                 # RGB image
-                pil_image = Image.fromarray(image, mode='RGB')
+                pil_image = Image.fromarray(image, mode="RGB")
             elif image.shape[2] == 4:
                 # RGBA image
-                pil_image = Image.fromarray(image, mode='RGBA')
+                pil_image = Image.fromarray(image, mode="RGBA")
             else:
                 raise ValueError(f"Unsupported image shape: {image.shape}")
         else:
             raise ValueError(f"Unsupported image dimensions: {image.shape}")
-        
+
         # Convert to base64
         buffer = io.BytesIO()
         pil_image.save(buffer, format=format)
         buffer.seek(0)
-        image_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        
+        image_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
         logger.debug(f"Converted numpy array {image.shape} to base64 {format}")
         return image_b64
 
@@ -162,10 +162,10 @@ class ChartSummarizer:
                         ],
                     }
                 ]
-                
+
                 response = self.client.chat.completions.create(
                     model=self.model_name,
-                    messages=messages, # type: ignore
+                    messages=messages,  # type: ignore
                 )
                 result = response.choices[0].message.content if response.choices else ""
                 logger.debug("Successfully received response from OpenAI")
@@ -176,7 +176,7 @@ class ChartSummarizer:
                 if attempt < self.retries:
                     logger.debug(f"Retrying in {self.timeout} seconds...")
                     time.sleep(self.timeout)
-        
+
         logger.error(
             f"Failed to summarize charts after {self.retries} attempts: {last_exception}"
         )

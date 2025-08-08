@@ -112,6 +112,8 @@ class ProcessingSettings:
     ocr_lang: str = "eng"
     zoom_factor: int = 2
     labels_to_exclude: List[str] = field(default_factory=list)
+    prefer_pdf_text: bool = True
+    pdf_text_threshold_chars: int = 20
 
 
 @dataclass
@@ -390,10 +392,28 @@ class Settings:
 
         labels_to_exclude: List[str] = processing_section.get("labels_to_exclude", [])
 
+        prefer_pdf_text: bool = bool(
+            int(
+                self._get_env_override(
+                    "processing_prefer_pdf_text",
+                    1 if processing_section.get("prefer_pdf_text", True) else 0,
+                )
+            )
+        )
+
+        pdf_text_threshold_chars: int = int(
+            self._get_env_override(
+                "processing_pdf_text_threshold_chars",
+                processing_section.get("pdf_text_threshold_chars", 20),
+            )
+        )
+
         return ProcessingSettings(
             ocr_lang=ocr_lang,
             zoom_factor=zoom_factor,
             labels_to_exclude=labels_to_exclude,
+            prefer_pdf_text=prefer_pdf_text,
+            pdf_text_threshold_chars=pdf_text_threshold_chars,
         )
 
     @property
@@ -495,6 +515,8 @@ class Settings:
             "processing": {
                 "ocr_lang": processing.ocr_lang,
                 "zoom_factor": processing.zoom_factor,
+                "prefer_pdf_text": processing.prefer_pdf_text,
+                "pdf_text_threshold_chars": processing.pdf_text_threshold_chars,
             },
         }
 

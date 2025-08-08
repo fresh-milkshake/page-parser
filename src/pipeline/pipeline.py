@@ -12,6 +12,9 @@ from src.pipeline.document import (
     Detector,
     DetectionResult,
     extract_text_from_image,
+    analyze_pdf,
+    extract_pdf_page_text,
+    extract_pdf_text_excluding_regions,
 )
 from src.pipeline.image import ChartSummarizer
 from src.pipeline.image import extract_regions, fill_regions_with_color
@@ -61,7 +64,7 @@ def pipeline(
         temp_path = Path(temp_dir)
         logger.debug(f"Created temporary directory: {temp_path}")
 
-        # Convert PDF to PNG in temporary directory
+        # Convert PDF to PNG in temporary directory (needed for image regions and OCR fallback)
         logger.info("Converting PDF to PNG images")
         image_paths = pdf_to_png(
             pdf_path=document_path,
@@ -70,6 +73,17 @@ def pipeline(
             zoom_y=settings.processing.zoom_factor,
         )
         logger.info(f"Converted PDF to {len(image_paths)} PNG images")
+
+        # Optionally analyze PDF pages to detect native text and image regions
+        logger.info("Analyzing PDF pages for native text and images")
+        try:
+            page_analyses = analyze_pdf(document_path)
+            logger.info("PDF analysis completed successfully")
+        except Exception as exc:
+            logger.warning(
+                f"PDF analysis failed with error: {exc}. Falling back to OCR-only text extraction."
+            )
+            page_analyses = [None] * len(image_paths)
 
         # Initialize models
         logger.info("Initializing detection and summarization models")
@@ -100,6 +114,59 @@ def pipeline(
                 break
 
             logger.info(f"Processing page {idx + 1}/{len(image_paths)}")
+
+            # Run layout detection once so we can both (a) exclude regions in PDF text and (b) reuse in processing
+            detections = detector.parse_layout(img)
+
+            analysis = page_analyses[idx]
+            prefer_pdf_text = settings.processing.prefer_pdf_text
+            fast_text: Optional[str] = None
+            if analysis is not None and prefer_pdf_text:
+                if analysis.has_text and not analysis.is_full_page_image:
+                    # Merge exclusion regions: image regions from analysis + labels_to_exclude regions from detections
+                    excluded_label_detections = filter_detections(
+                        detections, settings.processing.labels_to_exclude
+                    )
+                    excluded_bboxes = [
+                        (
+                            float(b[0]),
+                            float(b[1]),
+                            float(b[2]),
+                            float(b[3]),
+                        )
+                        for b in (
+                            detection.bbox for detection in excluded_label_detections
+                        )
+                    ]
+                    combined_excludes = list(analysis.image_rects) + excluded_bboxes
+
+                    if combined_excludes:
+                        logger.debug(
+                            f"Excluding {len(combined_excludes)} regions from PDF text on page {idx + 1}"
+                        )
+                        fast_text = extract_pdf_text_excluding_regions(
+                            document_path, analysis.page_index, combined_excludes
+                        )
+                    else:
+                        fast_text = extract_pdf_page_text(
+                            document_path, analysis.page_index
+                        )
+
+                    if (
+                        fast_text
+                        and len(fast_text)
+                        < settings.processing.pdf_text_threshold_chars
+                    ):
+                        fast_text = None
+                        logger.debug(
+                            f"Discarded short PDF text below threshold; will use OCR for page {idx + 1}"
+                        )
+                    else:
+                        length = 0 if fast_text is None else len(fast_text)
+                        logger.info(
+                            f"Using PDF-native text for page {idx + 1} (length={length})"
+                        )
+
             page_result = process_single_page(
                 image=img,
                 page_number=idx + 1,
@@ -108,6 +175,8 @@ def pipeline(
                 ocr_lang=settings.processing.ocr_lang,
                 charts_labels=settings.filtration.chart_labels,
                 labels_to_exclude_from_ocr=settings.processing.labels_to_exclude,
+                pre_extracted_text=fast_text,
+                precomputed_detections=detections,
             )
             results.append(page_result)
 
@@ -129,6 +198,8 @@ def process_single_page(
     charts_labels: List[str],
     labels_to_exclude_from_ocr: List[str],
     ocr_lang: str,
+    pre_extracted_text: Optional[str] = None,
+    precomputed_detections: Optional[List[DetectionResult]] = None,
 ) -> Dict[str, Any]:
     """
     Process a single page image: detect elements, extract chart and text data.
@@ -138,12 +209,13 @@ def process_single_page(
         detector (Detector): Detector instance for layout detection.
         summarizer (ChartSummarizer): Summarizer for chart elements.
         ocr_lang (str): Language for OCR.
+        pre_extracted_text (Optional[str]): Text already extracted from PDF; if present, OCR is skipped.
 
     Returns:
         Dict[str, Any]: Dictionary containing page number and extracted elements.
     """
 
-    detections = detector.parse_layout(image)
+    detections = precomputed_detections or detector.parse_layout(image)
     chart_detections = filter_detections(detections, charts_labels)
 
     chart_elements = process_chart_elements(
@@ -160,6 +232,7 @@ def process_single_page(
         excluded_bboxes=excluded_regions,  # type: ignore
         ocr_lang=ocr_lang,
         page_number=page_number,
+        pre_extracted_text=pre_extracted_text,
     )
 
     elements = chart_elements + text_elements
@@ -239,21 +312,39 @@ def process_text_elements(
     excluded_bboxes: List[RectangleUnion],
     page_number: int,
     ocr_lang: str,
+    pre_extracted_text: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """
-    Process text elements: fill chart regions with white, then extract text from the entire image.
+    """Process text content for a page.
+
+    If ``pre_extracted_text`` is provided, it will be returned directly as a single text
+    element that spans the full page. Otherwise, chart regions are masked and OCR is applied.
 
     Args:
-        image (np.ndarray): Image to extract text from.
-        chart_bboxes (List[DetectionResult]): Chart bounding boxes to fill with white.
-        temp_path (Path): Temporary directory path.
+        image (np.ndarray): Page image to extract text from.
+        excluded_bboxes (List[RectangleUnion]): Regions to exclude from OCR (e.g., charts).
         page_number (int): Current page number.
-        ocr_lang (str): Language for Tesseract OCR.
+        ocr_lang (str): OCR language code.
+        pre_extracted_text (Optional[str]): If provided, skip OCR and return this text.
 
     Returns:
         List[Dict[str, Any]]: List of text elements with extracted content.
     """
     logger.info(f"Processing text elements for page {page_number}")
+
+    # If we already have text from the PDF, just use it and skip OCR
+    if pre_extracted_text is not None and pre_extracted_text.strip():
+        text = pre_extracted_text.strip()
+        height, width = image.shape[:2]
+        logger.debug(
+            f"Using pre-extracted PDF text for page {page_number} (chars={len(text)})"
+        )
+        return [
+            {
+                "type": "text",
+                "text": text,
+                "bbox": (0, 0, width, height),
+            }
+        ]
 
     filled_image = fill_regions_with_color(
         image=image,
@@ -262,7 +353,7 @@ def process_text_elements(
     )
 
     # Extract text from the entire processed image
-    logger.debug("Extracting text from processed image")
+    logger.debug("Extracting text from processed image via OCR")
     text = extract_text_from_image(
         image=filled_image,
         lang=ocr_lang,

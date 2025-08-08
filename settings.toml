@@ -33,13 +33,15 @@ labels_to_exclude = [
     "table",
     "footnote",
 ]
+prefer_pdf_text = true
+pdf_text_threshold_chars = 20
 
 [layout_detection]
 backend = "yolo_doclaynet"
 
 [layout_detection.doclayout_yolo]
 imgsz = 1024
-conf = 0.7
+conf = 0.75
 device = "cpu"
 
 [layout_detection.yolo_doclaynet]
