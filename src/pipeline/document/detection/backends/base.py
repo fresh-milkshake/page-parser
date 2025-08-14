@@ -1,30 +1,10 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import List, TypeAlias
 
 import numpy as np
 
 from src.config.settings import Settings
-
-
-@dataclass
-class DetectionResult:
-    """
-    Data class representing a single detection result.
-    Kept for backward compatibility.
-
-    Attributes:
-        label (int): The class index of the detected object.
-        label_name (str): The class name of the detected object.
-        bbox (List[float]): Bounding box coordinates in pixel values [x1, y1, x2, y2].
-        confidence (float): Confidence score of the detection.
-    """
-
-    label: int
-    label_name: str
-    bbox: List[float]
-    confidence: float
-
+from ..types import DetectionResult
 
 DetectionResults: TypeAlias = List[DetectionResult]
 
@@ -56,3 +36,25 @@ class BaseDetectionBackend(ABC):
             List[DetectionResult]: List of detection results.
         """
         pass
+
+    @classmethod
+    @abstractmethod
+    def get_supported_labels(cls) -> list[str]:
+        """Return the list of canonical labels this backend can emit.
+
+        Labels must be lowercase and use hyphens instead of spaces/underscores.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def normalize_label(cls, raw_label: str) -> str:
+        """Normalize a raw backend label to the canonical one for this backend."""
+        raise NotImplementedError
+
+
+    @classmethod
+    @abstractmethod
+    def get_original_labels(cls) -> list[str]:
+        """Return the list of original labels this backend can emit."""
+        raise NotImplementedError

@@ -10,23 +10,61 @@ logger = get_logger(__name__)
 
 def _generate_vibrant_colors(n: int) -> list[tuple[int, int, int]]:
     """
-    Generate n visually distinct vibrant BGR colors.
+    Generate n visually distinct pale CMYK-like BGR colors.
+
+    This uses low saturation and high value in HSV to achieve a soft, print-like palette.
 
     Args:
         n (int): Number of colors to generate.
 
     Returns:
-        list[tuple[int, int, int]]: List of BGR color tuples.
+        list[tuple[int, int, int]]: List of pale BGR color tuples.
     """
-    hsvs = [(int(i * 180 / n), 255, 255) for i in range(n)]
+    if n <= 0:
+        return []
+    # Low saturation, high value for pastel/pale colors
+    hsvs = [(int(i * 180 / n), 80, 240) for i in range(n)]
     colors = [
         cv2.cvtColor(np.uint8([[[h, s, v]]]), cv2.COLOR_HSV2BGR)[0, 0]  # type: ignore
         for h, s, v in hsvs
     ]  # type: ignore
-    return [tuple(int(c) for c in color) for color in colors]  # type: ignore
+    # Slightly blend with white to soften further
+    blended: list[tuple[int, int, int]] = []
+    for bgr in colors:
+        b, g, r = int(bgr[0]), int(bgr[1]), int(bgr[2])
+        b = int(round(0.8 * b + 0.2 * 255))
+        g = int(round(0.8 * g + 0.2 * 255))
+        r = int(round(0.8 * r + 0.2 * 255))
+        blended.append((b, g, r))
+    return blended
 
 
-class Annotator:
+def _make_pale_color(bgr: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Convert an arbitrary BGR color to a pale CMYK-like tone.
+
+    The function reduces saturation, increases value, and blends slightly with white.
+
+    Args:
+        bgr (tuple[int, int, int]): Input BGR color.
+
+    Returns:
+        tuple[int, int, int]: Pale BGR color.
+    """
+    color_arr = np.array([[[bgr[0], bgr[1], bgr[2]]]], dtype=np.uint8)
+    hsv = cv2.cvtColor(color_arr, cv2.COLOR_BGR2HSV)[0, 0]  # type: ignore
+    h, s, v = int(hsv[0]), int(hsv[1]), int(hsv[2])
+    s = min(s, 80)
+    v = max(v, 240)
+    pale_bgr = cv2.cvtColor(np.uint8([[[h, s, v]]]), cv2.COLOR_HSV2BGR)[0, 0]  # type: ignore
+    b, g, r = int(pale_bgr[0]), int(pale_bgr[1]), int(pale_bgr[2])
+    # Soft blend with white for a print-like feel
+    b = int(round(0.85 * b + 0.15 * 255))
+    g = int(round(0.85 * g + 0.15 * 255))
+    r = int(round(0.85 * r + 0.15 * 255))
+    return (b, g, r)
+
+
+class FileAnnotator:
     """
     Annotates an image with bounding boxes and labels using configurable drawing options.
     Each label is assigned a unique vibrant color.
@@ -100,7 +138,10 @@ class Annotator:
         for detection in self.detections:
             x1, y1, x2, y2 = map(int, detection.bbox)
             label = getattr(detection, "label_name", str(detection.label))
-            color = self.line_color or self.label_colors.get(label, (0, 0, 0))
+            base_color: tuple[int, int, int] = self.line_color or self.label_colors.get(
+                label, (0, 0, 0)
+            )
+            color = _make_pale_color(base_color)
 
             cv2.rectangle(
                 image,
@@ -135,7 +176,7 @@ class Annotator:
                 (text_x, text_y),
                 self.font_family,
                 self.font_size,
-                (255, 255, 255),
+                (0, 0, 0),
                 self.font_thickness,
                 self.line_type,
             )
@@ -212,7 +253,10 @@ class NumpyAnnotator:
         for detection in self.detections:
             x1, y1, x2, y2 = map(int, detection.bbox)
             label = getattr(detection, "label_name", str(detection.label))
-            color = self.line_color or self.label_colors.get(label, (0, 0, 0))
+            base_color: tuple[int, int, int] = self.line_color or self.label_colors.get(
+                label, (0, 0, 0)
+            )
+            color = _make_pale_color(base_color)
 
             cv2.rectangle(
                 annotated_image,
@@ -244,7 +288,7 @@ class NumpyAnnotator:
                 (text_x, text_y),
                 self.font_family,
                 self.font_size,
-                (255, 255, 255),
+                (0, 0, 0),
                 self.font_thickness,
                 self.line_type,
             )

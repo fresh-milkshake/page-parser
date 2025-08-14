@@ -78,10 +78,22 @@ class Detector:
 
     def get_possible_labels(self) -> List[str]:
         """
-        Get the possible labels for the detector.
+        Get the possible labels for the current backend (canonicalized per-backend).
         """
-        if hasattr(self.detector, "model"):
-            return self.detector.model.names
+        if self.backend == DetectionBackendEnum.DOCLAYOUT_YOLO:
+            return DoclayoutYoloBackend.get_supported_labels()
+        if self.backend == DetectionBackendEnum.YOLO_DOCLAYNET:
+            return YoloDoclaynetBackend.get_supported_labels()
+        if hasattr(self.detector, "get_supported_labels"):
+            return self.detector.get_supported_labels()  # type: ignore[attr-defined]
+        # Fallback to model names if backend does not implement supported labels
+        if hasattr(self.detector, "model") and hasattr(self.detector.model, "names"):
+            # Normalize formatting for presentation
+            names = []
+            for name in self.detector.model.names:  # type: ignore[attr-defined]
+                key = str(name).strip().lower().replace("_", "-").replace(" ", "-")
+                names.append(key)
+            return names
         raise RuntimeError(
-            f"Detection backend {self.backend.__class__} does not implement 'model' attribute."
+            f"Detection backend {self.backend.__class__} does not expose supported labels."
         )

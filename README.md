@@ -249,11 +249,11 @@ When using or redistributing this software, you must:
 - [ ] Find more efficient OCR model
   - [ ] Try to use [EasyOCR](https://github.com/JaidedAI/EasyOCR)
   - [ ] Try to use [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
-- [ ] Enhance preprocessing before OCR
+- [x] Enhance preprocessing before OCR
   - [x] Remove noise from images (page numbers, titles, etc.)
-  - [ ] Add slight quality degradation for better speed
+  - [ ] ~~Add slight quality degradation for better speed~~ ()
 - [x] Unify label naming conventions
-- [ ] Enrich vision model context with table and chart captions
+- [ ] ~~Enrich vision model context with table and chart captions~~ (too low detection quality and bad consistency)
 
 ---
 
