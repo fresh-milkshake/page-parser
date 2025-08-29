@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> This project moved to new repository [privateai-com/docviz](https://github.com/privateai-com/docviz) and is no longer maintained.
+> This repository is kept for historical purposes only.
+
 <div align="center">
 
 # 📄 Page Parser
